@@ -16,6 +16,7 @@
 #include "Eigen/Dense"
 typedef float Real;
 typedef Eigen::MatrixXf MatrixXf;
+typedef Eigen::MatrixXi MatrixXi;
 typedef Eigen::VectorXf VectorXf;
 
 #endif
