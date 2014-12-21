@@ -129,6 +129,9 @@ bool BuildGraph::build_graph(std::string label_file, std::string gpb_file)
 		
 	//////////////////////////////////////////
 	// file smooth term 
+	double sigma2 = 0.1; //squared sigma 
+	double weight = 2.0 / std::sqrt(sigma2);
+	std::cout<<"smooth term weight is "<<weight<<std::endl;
 	for(int i=0; i<num_labels; ++i)
 		for(int j=0; j<num_labels; ++j)
 		{
@@ -138,7 +141,7 @@ bool BuildGraph::build_graph(std::string label_file, std::string gpb_file)
 			else
 				smooth[i*num_labels+j] = 1.0;
 			*/
-			smooth[i*num_labels+j] = (i==j) ? 0.0 : 1.0;
+			smooth[i*num_labels+j] = (i==j) ? 0.0 : weight;
 		}
 
 	for(int i=0; i<height; ++i)
@@ -146,7 +149,7 @@ bool BuildGraph::build_graph(std::string label_file, std::string gpb_file)
 		{
 			if(i < height-1)
 			{
-				vCosts[i+j*height] = std::exp(-1*std::max(globalPb(i, j), globalPb(i+1, j)));
+				vCosts[i+j*height] = std::exp(-1*std::max(globalPb(i, j), globalPb(i+1, j)) / sigma2);
 			}
 			else
 			{
@@ -154,7 +157,7 @@ bool BuildGraph::build_graph(std::string label_file, std::string gpb_file)
 			}
 			if(j < width-1)
 			{
-				hCosts[i*width+j] = std::exp(-1*std::max(globalPb(i, j), globalPb(i, j+1)));
+				hCosts[i*width+j] = std::exp(-1*std::max(globalPb(i, j), globalPb(i, j+1)) / sigma2);
 			}
 			else
 			{
