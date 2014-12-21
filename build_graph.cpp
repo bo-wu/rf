@@ -22,14 +22,19 @@ BuildGraph::BuildGraph(int w, int h)
 {
 	width = w;
 	height = h;
-	globalPb = MatrixXf::Zero(h, w);
+	globalPb = MatrixXd::Zero(h, w);
 	init_labels = MatrixXi::Constant(h, w, -1); //start from 0 to num_labels-1
 	result_labels = MatrixXi::Constant(h, w, -1);
+	vCosts = new double[width*height];
+	hCosts = new double[width*height];
 }
 
 BuildGraph::~BuildGraph()
 {
 	delete gc;
+	delete []smooth;
+	delete []vCosts;
+	delete []hCosts;
 }
 
 bool BuildGraph::read_labels(std::string filename)
@@ -84,65 +89,103 @@ bool BuildGraph::read_globalPb(std::string filename)
 /* 
  * ===  FUNCTION  ======================================================================
  *         Name:  build_graph
- *  Description:  build graph and solve
+ *  Description:  build graph for solve
  * =====================================================================================
  */
 bool BuildGraph::build_graph(std::string label_file, std::string gpb_file)
 {
-	read_labels(label_file);
-	read_globalPb(gpb_file);
+	if(!read_labels(label_file))
+	{
+		std::cerr<<"read label file failure\n";
+		exit(-1);
+	}
+	if(!read_globalPb(gpb_file))
+	{
+		std::cerr<<"read globalPb file failure\n";
+		exit(-1);
+	}
+
 	num_labels = init_labels.maxCoeff() + 1;
+	smooth = new double[num_labels * num_labels];
+	try{
 	gc = new GCoptimizationGridGraph(width, height, num_labels);
 	////////////////////////////////////////////
 	// fill data term
 	for(int i=0; i<height; ++i)
 		for(int j=0; j<width; ++j)
+		{
 			for(int l=0; l<num_labels; ++l)
 			{
-				if(l == init_labels(i, j))
-					gc->setDataCost(width*i+j, l, 0);
+				if(init_labels(i, j) == -1) //handle uncertain labels
+				{
+					gc->setDataCost(width*i+j, l, 0.2);
+				}
+				else if(l == init_labels(i, j))
+					gc->setDataCost(width*i+j, l, 0.0);
 				else
-					gc->setDataCost(width*i+j, l, 5);
+					gc->setDataCost(width*i+j, l, 0.5);
 			}
+		}
 		
 	//////////////////////////////////////////
 	// file smooth term 
-	int * v = new int[num_labels*num_labels];
 	for(int i=0; i<num_labels; ++i)
 		for(int j=0; j<num_labels; ++j)
 		{
+			/*
 			if(i==j)
-				v[i*num_labels+j] = 0;
+				smooth[i*num_labels+j] = 0.0;
 			else
-				v[i*num_labels+j] = 1;
+				smooth[i*num_labels+j] = 1.0;
+			*/
+			smooth[i*num_labels+j] = (i==j) ? 0.0 : 1.0;
 		}
 
-	int *vCosts = new int[width*height];
-	int *hCosts = new int[width*height];
 	for(int i=0; i<height; ++i)
 		for(int j=0; j<width; ++j)
 		{
 			if(i < height-1)
 			{
-				vCosts[i+j*height] = int( 10 * std::exp(-1*std::max(globalPb(i, j), globalPb(i+1, j))) );
+				vCosts[i+j*height] = std::exp(-1*std::max(globalPb(i, j), globalPb(i+1, j)));
 			}
 			else
 			{
-				vCosts[i+j*height] = 0;
+				vCosts[i+j*height] = 0.0;
 			}
 			if(j < width-1)
 			{
-				hCosts[i*width+j] = int( 10 * std::exp(-1*std::max(globalPb(i, j), globalPb(i, j+1))) );
+				hCosts[i*width+j] = std::exp(-1*std::max(globalPb(i, j), globalPb(i, j+1)));
 			}
 			else
 			{
-				hCosts[i*width+j] = 0;
+				hCosts[i*width+j] = 0.0;
 			}
 		}
+//////////////////// checking /////////////////////////////
+/*  
+	std::ofstream outVcost("vcost.txt");
+	std::ofstream outHcost("hcost.txt");
+	for(int i=0; i<height; ++i)
+	{
+		for(int j=0; j<width; ++j)
+		{
+			outVcost << vCosts[i*width + j]<<" ";
+			outHcost << hCosts[i*width + j]<<" ";
+		}
+		outVcost<<"\n";
+		outHcost<<"\n";
+	}
+	outVcost.close();
+	outHcost.close();
+*/
+/////////////////////////////////////////////////////////////
+	gc->setSmoothCostVH(smooth, vCosts, hCosts);
+	}
+	catch(GCException e)
+	{
+		e.Report();
+	}
 
-	delete v;
-	delete vCosts;
-	delete hCosts;
 	return true;
 }
 
@@ -154,11 +197,42 @@ bool BuildGraph::build_graph(std::string label_file, std::string gpb_file)
  */
 void BuildGraph::solve()
 {
-	gc->expansion(2);
+	try{
+	std::cout<<"Before Optimization energy is "<< gc->compute_energy()<<std::endl;
+	std::cout<<"data energy is "<<gc->giveDataEnergy()<<"\nsmooth energy is "<<gc->giveSmoothEnergy()<<std::endl;
+	gc->expansion(10);
+	std::cout<<"After Optimization energy is "<< gc->compute_energy()<<std::endl;
+	std::cout<<"data energy is "<<gc->giveDataEnergy()<<"\nsmooth energy is "<<gc->giveSmoothEnergy()<<std::endl;
 	for(int i=0; i<height; ++i)
 		for(int j=0; j<width; ++j)
 		{
 			result_labels(i, j) = gc->whatLabel(width*i + j);
 		}
+	}
+	catch(GCException e)
+	{
+		e.Report();
+	}
 }		/* -----  end of function solve  ----- */
+
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  save_result
+ *  Description: save the final labels 
+ * =====================================================================================
+ */
+void BuildGraph::save_result(std::string filename)
+{
+	std::ofstream outFile(filename.c_str());
+	if(outFile.is_open())
+	{
+		outFile << result_labels;
+	}
+	else
+	{
+		std::cerr<<"open file for writting result error\n";
+		exit(-1);
+	}
+}		/* -----  end of function save_result  ----- */
 

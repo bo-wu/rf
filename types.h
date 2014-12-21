@@ -14,9 +14,10 @@
 #ifndef TYPES_H_
 #define TYPES_H_
 #include "Eigen/Dense"
-typedef float Real;
+typedef double Real;
 typedef Eigen::MatrixXf MatrixXf;
+typedef Eigen::MatrixXd MatrixXd;
 typedef Eigen::MatrixXi MatrixXi;
-typedef Eigen::VectorXf VectorXf;
-
+typedef Eigen::VectorXd VectorXd;
+typedef Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic> MatrixXr;
 #endif

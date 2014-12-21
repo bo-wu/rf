@@ -14,8 +14,6 @@
 #ifndef BUILD_GRAPH_H_
 #define BUILD_GRAPH_H_
 
-//#define GCO_ENERGYTYPE int
-//#define GCO_ENERGYTERMTYPE int
 #include "gco/GCoptimization.h"
 #include "types.h"
 
@@ -27,10 +25,12 @@ struct BuildGraph
 	bool read_globalPb(std::string filename);
 	bool build_graph(std::string label_file, std::string gpb_file);
 	void solve();
+	void save_result(std::string filename);
 	GCoptimizationGridGraph *gc;
 	int width, height, num_pixels, num_labels;
-	MatrixXf globalPb; 
+	MatrixXd globalPb; 
 	MatrixXi init_labels, result_labels;
+	double *smooth, *vCosts, *hCosts;
 };
 
 #endif
