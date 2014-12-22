@@ -19,7 +19,7 @@
 
 int main(int argc, char** argv)
 {
-	if(argc != 4)
+	if(argc != 5)
 	{
 		std::cerr<<"Not right parameter\n";
 		return -1;
@@ -33,12 +33,18 @@ int main(int argc, char** argv)
 	}
 	int height = image.rows;
 	int	width = image.cols;
-
+	std::string path = "result/label/";
+	std::string suffix = "label";
+	std::string full_name = argv[1];
+	std::string name = path + full_name.substr(14, full_name.length()-17) + suffix;
 	std::cout<<"width is "<<width<<", height is "<<height<<std::endl;
 	BuildGraph label_graph(width, height);
-	label_graph.build_graph(argv[2], argv[3]);
+	//// param1@ init label
+	//   param2@ label(data) weight
+	//   param3@ smooth term weight
+	label_graph.build_graph(argv[2], argv[3], argv[4]);
 	label_graph.solve();
-	label_graph.save_result("label.txt");
+	label_graph.save_result(name);
 
 	/////////////  checking  /////////////////
 	/*
