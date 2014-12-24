@@ -15,6 +15,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <iostream>
 #include <fstream>
+#include <iomanip>
 #include "build_graph.h"
 
 int main(int argc, char** argv)
@@ -48,10 +49,10 @@ int main(int argc, char** argv)
 
 	/////////////  checking  /////////////////
 	/*
-	std::ofstream outFile("init_labels.txt");
+	std::ofstream outFile("label_weight.txt");
 	if(outFile.is_open())
 	{
-		outFile << label_graph.init_labels;
+		outFile <<std::left<<std::setw(9)<<std::setfill('0')<<std::setprecision(8) << label_graph.label_weight;
 	}
 	outFile.close();
 	outFile.open("gpb.txt");

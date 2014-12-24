@@ -84,7 +84,7 @@ bool BuildGraph::read_label_weight(std::string filename)
 			label_weight(0, i) = first_line.at(i);
 		}
 		///////////////////////////
-		//fill other data
+		//fill the left data
 		for(int i=1; i<num_pixels; ++i)
 		{
 			std::getline(inFile, line);
@@ -144,7 +144,7 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 	}
 	if(!read_label_weight(weight_file))
 	{
-		std::cerr<<"read label weight file\n";
+		std::cerr<<"read label weight failure\n";
 		exit(-1);
 	}
 	if(!read_globalPb(gpb_file))
@@ -170,13 +170,13 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 						gc->setDataCost(width*i+j, l, 0.0);
 					else
 						gc->setDataCost(width*i+j, l, 0.5);
-						*/
+					*/
 				}
 			}
 
 		//////////////////////////////////////////
 		// file smooth term 
-		double sigma2 = 0.5; //squared sigma 
+		double sigma2 = 0.2; //squared sigma 
 		double weight = 1.0 / std::sqrt(sigma2);
 		std::cout<<"smooth term weight is "<<weight<<std::endl;
 		for(int i=0; i<num_labels; ++i)
@@ -196,11 +196,11 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 			{
 				if(i < height-1)
 				{
-					vCosts[i+j*height] = std::exp(-1*std::max(globalPb(i, j), globalPb(i+1, j)) / sigma2);
+					vCosts[i*width+j] = std::exp(-1*std::max(globalPb(i, j), globalPb(i+1, j)) / sigma2);
 				}
 				else
 				{
-					vCosts[i+j*height] = 0.0;
+					vCosts[i*width+j] = 0.0;
 				}
 				if(j < width-1)
 				{
@@ -211,25 +211,41 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 					hCosts[i*width+j] = 0.0;
 				}
 			}
+
+			gc->setSmoothCostVH(smooth, vCosts, hCosts);
+
 		//////////////////// checking /////////////////////////////
-		/*  
-			std::ofstream outVcost("vcost.txt");
-			std::ofstream outHcost("hcost.txt");
+			/*  
+			std::string base_name = label_file.substr(16, label_file.length()-21);
+			std::string vcost_name = base_name + "vcost";
+			std::string hcost_name = base_name + "hcost";
+			std::string weight_name = base_name + "wei";
+			std::ofstream outVcost(vcost_name.c_str());
+			std::ofstream outHcost(hcost_name.c_str());
+			std::ofstream outWeight(weight_name.c_str());
 			for(int i=0; i<height; ++i)
 			{
-			for(int j=0; j<width; ++j)
-			{
-			outVcost << vCosts[i*width + j]<<" ";
-			outHcost << hCosts[i*width + j]<<" ";
+				for(int j=0; j<width; ++j)
+				{
+					outVcost << vCosts[i*width + j]<<" ";
+					outHcost << hCosts[i*width + j]<<" ";
+				}
+				outVcost<<"\n";
+				outHcost<<"\n";
 			}
-			outVcost<<"\n";
-			outHcost<<"\n";
+			for(int i=0; i<num_pixels; ++i)
+			{
+				for(int j=0; j<num_labels; ++j)
+				{
+					outWeight << label_weight(i, j)<<" ";
+				}
+				outWeight<<"\n";
 			}
 			outVcost.close();
 			outHcost.close();
+			outWeight.close();
 			*/
-		/////////////////////////////////////////////////////////////
-		gc->setSmoothCostVH(smooth, vCosts, hCosts);
+			/////////////////////////////////////////////////////////////
 	}
 	catch(GCException e)
 	{
@@ -252,6 +268,7 @@ void BuildGraph::solve()
 		std::cout<<"data energy is "<<gc->giveDataEnergy()<<"\nsmooth energy is "<<gc->giveSmoothEnergy()<<std::endl;
 
 		gc->expansion(10);
+		//gc->swap(10);
 
 		std::cout<<"After Optimization energy is "<< gc->compute_energy()<<std::endl;
 		std::cout<<"data energy is "<<gc->giveDataEnergy()<<"\nsmooth energy is "<<gc->giveSmoothEnergy()<<std::endl;
@@ -286,5 +303,6 @@ void BuildGraph::save_result(std::string filename)
 		std::cerr<<"open file for writting result error\n";
 		exit(-1);
 	}
+	outFile.close();
 }		/* -----  end of function save_result  ----- */
 

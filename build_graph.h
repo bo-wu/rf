@@ -29,7 +29,7 @@ struct BuildGraph
 	void save_result(std::string filename);
 	GCoptimizationGridGraph *gc;
 	int width, height, num_pixels, num_labels;
-	MatrixXd globalPb, label_weight; 
+	MatrixXr globalPb, label_weight; 
 	MatrixXi init_labels, result_labels;
 	double *smooth, *vCosts, *hCosts;
 };
