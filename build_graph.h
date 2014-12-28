@@ -16,10 +16,11 @@
 
 #include "gco/GCoptimization.h"
 #include "types.h"
+#include <opencv2/core/core.hpp>
 
 struct BuildGraph
 {
-	BuildGraph(int w, int h);
+	BuildGraph(int w, int h, const cv::Mat& image);
 	~BuildGraph();
 	bool read_labels(std::string filename);
 	bool read_label_weight(std::string filename);
@@ -29,7 +30,7 @@ struct BuildGraph
 	void save_result(std::string filename);
 	GCoptimizationGridGraph *gc;
 	int width, height, num_pixels, num_labels;
-	MatrixXr globalPb, label_weight; 
+	MatrixXr globalPb, label_weight, color_mat; 
 	MatrixXi init_labels, result_labels;
 	double *smooth, *vCosts, *hCosts;
 };

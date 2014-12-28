@@ -39,7 +39,7 @@ int main(int argc, char** argv)
 	std::string full_name = argv[1];
 	std::string name = path + full_name.substr(14, full_name.length()-17) + suffix;
 	std::cout<<"width is "<<width<<", height is "<<height<<std::endl;
-	BuildGraph label_graph(width, height);
+	BuildGraph label_graph(width, height, image);
 	//// param1@ init label
 	//   param2@ label(data) weight
 	//   param3@ smooth term weight

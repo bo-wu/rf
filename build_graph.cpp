@@ -19,7 +19,7 @@
 #include <algorithm>
 #include "build_graph.h"
 
-BuildGraph::BuildGraph(int w, int h)
+BuildGraph::BuildGraph(int w, int h, const cv::Mat& image)
 {
 	width = w;
 	height = h;
@@ -27,8 +27,19 @@ BuildGraph::BuildGraph(int w, int h)
 	globalPb = MatrixXd::Zero(h, w);
 	init_labels = MatrixXi::Constant(h, w, -1); //start from 0 to num_labels-1
 	result_labels = MatrixXi::Constant(h, w, -1);
+	color_mat = MatrixXd::Zero(h*w, 3);
 	vCosts = new double[width*height];
 	hCosts = new double[width*height];
+	cv::Vec3f color;
+	for(int i=0; i<h; ++i)
+	{
+		for(int j=0; j<w; ++j)
+		{
+			color = image.at<cv::Vec3b>(i, j);
+			color_mat.row(i*w + j) << color.val[0], color.val[1], color.val[2];
+		}
+	}
+	color_mat = color_mat / 255.0;
 }
 
 BuildGraph::~BuildGraph()
@@ -139,17 +150,17 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 {
 	if(!read_labels(label_file))
 	{
-		std::cerr<<"read label file failure\n";
+		std::cerr<<"read label file "<<label_file<<" failure\n";
 		exit(-1);
 	}
 	if(!read_label_weight(weight_file))
 	{
-		std::cerr<<"read label weight failure\n";
+		std::cerr<<"read label weight file "<<weight_file<<" failure\n";
 		exit(-1);
 	}
 	if(!read_globalPb(gpb_file))
 	{
-		std::cerr<<"read globalPb file failure\n";
+		std::cerr<<"read globalPb file "<<gpb_file<<" failure\n";
 		exit(-1);
 	}
 
@@ -164,7 +175,7 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 			{
 				for(int l=0; l<num_labels; ++l)
 				{
-					gc->setDataCost(width*i+j, l, label_weight(width*i+j, l));
+					gc->setDataCost(width*i+j, l, 0.5*label_weight(width*i+j, l));
 					/*  
 					if(l == init_labels(i, j))
 						gc->setDataCost(width*i+j, l, 0.0);
@@ -177,7 +188,8 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 		//////////////////////////////////////////
 		// file smooth term 
 		double sigma2 = 0.2; //squared sigma 
-		double weight = 1.0 / std::sqrt(sigma2);
+		double weight = 1.0 ; //    / std::sqrt(sigma2);
+		Vector3d diff;
 		std::cout<<"smooth term weight is "<<weight<<std::endl;
 		for(int i=0; i<num_labels; ++i)
 			for(int j=0; j<num_labels; ++j)
@@ -196,7 +208,9 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 			{
 				if(i < height-1)
 				{
-					vCosts[i*width+j] = std::exp(-1*std::max(globalPb(i, j), globalPb(i+1, j)) / sigma2);
+					diff = color_mat.row(i*width + j) - color_mat.row((i+1)*width + j);
+					vCosts[i*width+j] = 0.4 * std::exp(-0.5*std::max(globalPb(i, j), globalPb(i+1, j)) / sigma2) + (0.6) * std::exp(- 0.5*diff.squaredNorm() / sigma2);
+					//vCosts[i*width+j] = std::exp(-1*std::max(globalPb(i, j), globalPb(i+1, j)) / sigma2 );
 				}
 				else
 				{
@@ -204,7 +218,9 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 				}
 				if(j < width-1)
 				{
-					hCosts[i*width+j] = std::exp(-1*std::max(globalPb(i, j), globalPb(i, j+1)) / sigma2);
+					diff = color_mat.row(i*width + j) - color_mat.row(i*width + (j+1));
+					hCosts[i*width+j] = 0.4 * std::exp(-1*std::max(globalPb(i, j), globalPb(i, j+1)) / sigma2) + (0.6) * std::exp(- 0.5 * diff.squaredNorm() / sigma2);
+					//hCosts[i*width+j] = std::exp(-1*std::max(globalPb(i, j), globalPb(i, j+1)) / sigma2 );
 				}
 				else
 				{
@@ -215,11 +231,11 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 			gc->setSmoothCostVH(smooth, vCosts, hCosts);
 
 		//////////////////// checking /////////////////////////////
-			/*  
 			std::string base_name = label_file.substr(16, label_file.length()-21);
-			std::string vcost_name = base_name + "vcost";
-			std::string hcost_name = base_name + "hcost";
-			std::string weight_name = base_name + "wei";
+			std::string path = "data/cost/";
+			std::string vcost_name = path + base_name + "vcost";
+			std::string hcost_name = path + base_name + "hcost";
+			std::string weight_name = path + base_name + "wei";
 			std::ofstream outVcost(vcost_name.c_str());
 			std::ofstream outHcost(hcost_name.c_str());
 			std::ofstream outWeight(weight_name.c_str());
@@ -244,6 +260,7 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 			outVcost.close();
 			outHcost.close();
 			outWeight.close();
+			/*  
 			*/
 			/////////////////////////////////////////////////////////////
 	}
@@ -265,13 +282,14 @@ void BuildGraph::solve()
 {
 	try{
 		std::cout<<"Before Optimization energy is "<< gc->compute_energy()<<std::endl;
-		std::cout<<"data energy is "<<gc->giveDataEnergy()<<"\nsmooth energy is "<<gc->giveSmoothEnergy()<<std::endl;
+	//	std::cout<<"data energy is "<<gc->giveDataEnergy()<<"\nsmooth energy is "<<gc->giveSmoothEnergy()<<std::endl;
 
 		gc->expansion(10);
 		//gc->swap(10);
 
 		std::cout<<"After Optimization energy is "<< gc->compute_energy()<<std::endl;
-		std::cout<<"data energy is "<<gc->giveDataEnergy()<<"\nsmooth energy is "<<gc->giveSmoothEnergy()<<std::endl;
+	//	std::cout<<"data energy is "<<gc->giveDataEnergy()<<"\nsmooth energy is "<<gc->giveSmoothEnergy()<<std::endl;
+		std::cout<<std::endl;
 		for(int i=0; i<height; ++i)
 			for(int j=0; j<width; ++j)
 			{
