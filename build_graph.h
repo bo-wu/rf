@@ -29,6 +29,8 @@ struct BuildGraph
 	bool read_globalPb(std::string filename);
 	bool build_graph(std::string label_file, std::string weight_file, std::string gpb_file, std::string colorf_file, std::string label_center_file);
 	bool build_general_graph(std::string label_file, std::string label_weight, std::string gpb_file, std::string colorf_file);
+	void set_neighbors();
+
 	void solve();
 	void save_result(std::string filename);
 	// regular grid graph

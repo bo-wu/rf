@@ -188,7 +188,7 @@ bool BuildGraph::read_globalPb(std::string filename)
 {
 	std::ifstream inFile(filename.c_str());
 	std::string line;
-	double threshold = 0.6;
+	double threshold = 0.0;
 	if(inFile.is_open())
 	{
 		for(int i=0; i<height; ++i)
@@ -261,10 +261,10 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 
 		//////////////////////////////////////////
 		// file smooth term 
-		double color_sigma2 = 1.0;
+		double color_sigma2 = 0.01;
 		double edge_sigma2 = 0.01; //squared sigma 
-		double label_sigma2 = 0.1;
-		double alpha = 1.0;
+		double label_sigma2 = 8.0;
+		double alpha = 0.9;
 		//use cluster center as label weight
 		//double weight; //    / std::sqrt(sigma2);
 		Vector3d diff;
@@ -279,8 +279,8 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 				   }
 				   else
 				   {
-					   smooth[i*num_labels+j] = 10.0 * ( label_center.row(i) - label_center.row(j) ).norm();
 					   //smooth[i*num_labels+j] = 10.0 * ( label_center.row(i) - label_center.row(j) ).norm();
+					   smooth[i*num_labels+j] = std::exp( ( label_center.row(i) - label_center.row(j) ).squaredNorm() / label_sigma2 );
 				   }
 			}
 
@@ -419,3 +419,14 @@ void BuildGraph::save_result(std::string filename)
 //{
 //	return <+return_value+>;
 //}		/* -----  end of function build_general_graph  ----- */
+
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  set_neighbors
+ *  Description:  
+ * =====================================================================================
+ */
+//void BuildGraph::set_neighbors()
+//{
+//}		/* -----  end of function set_neighbors  ----- */
