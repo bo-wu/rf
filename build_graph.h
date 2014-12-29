@@ -27,14 +27,18 @@ struct BuildGraph
 	bool read_label_center(std::string filename);
 	bool read_float_color(std::string filename);
 	bool read_globalPb(std::string filename);
-	bool build_graph(std::string label_file, std::string weight_file, std::string gpb_file, std::string colorf_file, std::string label_center_file);
-	bool build_general_graph(std::string label_file, std::string label_weight, std::string gpb_file, std::string colorf_file);
-	void set_neighbors();
 
-	void solve();
+	void initial_data(std::string label_file, std::string weight_file, std::string gpb_file, std::string colorf_file, std::string label_center_file);
+	bool build_grid_graph();
+	bool build_general_graph();
+	void set_neighbors(GCoptimizationGeneralGraph* ggc);
+
+	void solve_grid_graph();
+	void solve_general_graph();
 	void save_result(std::string filename);
 	// regular grid graph
 	GCoptimizationGridGraph *gc;
+	GCoptimizationGeneralGraph * ggc; //general graph cut
 	// general graph
 	
 	// data
@@ -43,6 +47,7 @@ struct BuildGraph
 	MatrixXr globalPb, label_weight, color_mat, label_center; 
 	MatrixXi init_labels, result_labels;
 	double *smooth, *vCosts, *hCosts;
+	std::string label_file_name;
 };
 
 #endif

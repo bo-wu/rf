@@ -46,8 +46,9 @@ int main(int argc, char** argv)
 	//   param3@ smooth term weight
 	//   param4@ float color value
 	//   param5@ cluster centers
-	label_graph.build_graph(argv[2], argv[3], argv[4], argv[5], argv[6]);
-	label_graph.solve();
+	label_graph.initial_data(argv[2], argv[3], argv[4], argv[5], argv[6]);
+	label_graph.build_grid_graph();
+	label_graph.solve_grid_graph();
 	label_graph.save_result(name);
 
 	/////////////  checking  /////////////////

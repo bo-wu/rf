@@ -49,6 +49,7 @@ BuildGraph::BuildGraph(int w, int h)
 BuildGraph::~BuildGraph()
 {
 	delete gc;
+	delete ggc;
 	delete []smooth;
 	delete []vCosts;
 	delete []hCosts;
@@ -76,6 +77,8 @@ bool BuildGraph::read_labels(std::string filename)
 	return false;
 }
 
+///////////////////////////////////////////
+//// label_weight from cluster centers
 bool BuildGraph::read_label_weight(std::string filename)
 {
 	std::ifstream inFile(filename.c_str());
@@ -125,7 +128,7 @@ bool BuildGraph::read_label_weight(std::string filename)
 /* 
  * ===  FUNCTION  ======================================================================
  *         Name:  read_float_color
- *  Description:  
+ *  Description:  store color image as float
  * =====================================================================================
  */
 bool BuildGraph:: read_float_color(std::string filename)
@@ -210,11 +213,11 @@ bool BuildGraph::read_globalPb(std::string filename)
 
 /* 
  * ===  FUNCTION  ======================================================================
- *         Name:  build_graph
- *  Description:  build graph for solve
+ *         Name:  initial_data
+ *  Description:  
  * =====================================================================================
  */
-bool BuildGraph::build_graph(std::string label_file, std::string weight_file, std::string gpb_file, std::string colorf_file, std::string label_center_file)
+void BuildGraph::initial_data(std::string label_file, std::string weight_file, std::string gpb_file, std::string colorf_file, std::string label_center_file)
 {
 	if(!read_labels(label_file))
 	{
@@ -245,6 +248,18 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 		exit(-1);
 	}
 
+	label_file_name = label_file;
+	
+}		/* -----  end of function initial_data  ----- */
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  build_graph
+ *  Description:  build graph for solve
+ * =====================================================================================
+ */
+bool BuildGraph::build_grid_graph()
+{
 	smooth = new double[num_labels * num_labels];
 	try{
 		gc = new GCoptimizationGridGraph(width, height, num_labels);
@@ -265,10 +280,6 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 		double edge_sigma2 = 0.01; //squared sigma 
 		double label_sigma2 = 8.0;
 		double alpha = 0.9;
-		//use cluster center as label weight
-		//double weight; //    / std::sqrt(sigma2);
-		Vector3d diff;
-		//std::cout<<"smooth term weight is "<<weight<<std::endl;
 		//cost according to normal
 		for(int i=0; i<num_labels; ++i)
 			for(int j=0; j<num_labels; ++j)
@@ -284,6 +295,8 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 				   }
 			}
 
+		//use cluster center as label weight
+		Vector3d diff;
 		//cost according to spatial relation
 		for(int i=0; i<height; ++i)
 			for(int j=0; j<width; ++j)
@@ -315,7 +328,7 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 			gc->setSmoothCostVH(smooth, vCosts, hCosts);
 
 		//////////////////// checking /////////////////////////////
-			std::string base_name = label_file.substr(12, label_file.length()-17);
+			std::string base_name = label_file_name.substr(12, label_file_name.length()-17);
 			std::string path = "data/cost/";
 			std::string vcost_name = path + base_name + "vcost";
 			std::string hcost_name = path + base_name + "hcost";
@@ -362,7 +375,7 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
  *  Description:  solve graph problem max flow/min cut
  * =====================================================================================
  */
-void BuildGraph::solve()
+void BuildGraph::solve_grid_graph()
 {
 	try{
 		std::cout<<"Before Optimization energy is "<< gc->compute_energy()<<std::endl;
@@ -415,10 +428,12 @@ void BuildGraph::save_result(std::string filename)
  *  Description:  
  * =====================================================================================
  */
-//void BuildGraph::build_general_graph ( <+argument_list+> )
-//{
-//	return <+return_value+>;
-//}		/* -----  end of function build_general_graph  ----- */
+bool BuildGraph::build_general_graph()
+{
+	ggc = new GCoptimizationGeneralGraph(num_pixels, num_labels);
+	set_neighbors(ggc);
+	return true;
+}		/* -----  end of function build_general_graph  ----- */
 
 
 /* 
@@ -427,6 +442,39 @@ void BuildGraph::save_result(std::string filename)
  *  Description:  
  * =====================================================================================
  */
-//void BuildGraph::set_neighbors()
-//{
-//}		/* -----  end of function set_neighbors  ----- */
+void BuildGraph::set_neighbors(GCoptimizationGeneralGraph* ggc)
+{
+	// image pixel neighbors
+	for(int i=0; i<height; ++i)
+		for(int j=0; j<width; ++j)
+		{
+			//for vertical direction
+			if(i < height-1)
+			{
+				ggc->setNeighbors(i*width+j, (i+1)*width+j, 1.0);
+			}
+
+			//for horizontal direction
+			if(j < width-1)
+			{
+				ggc->setNeighbors(i*width+j, i*width+(j+1), 1,0);
+			}
+		}
+
+	// symmetric is only for windows
+	// symmetric neighbors
+	//
+}		/* -----  end of function set_neighbors  ----- */
+
+
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  solve_general_graph
+ *  Description:  
+ * =====================================================================================
+ */
+void BuildGraph::solve_general_graph()
+{
+}		/* -----  end of function solve_general_graph  ----- */
+
