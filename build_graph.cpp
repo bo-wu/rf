@@ -19,7 +19,7 @@
 #include <algorithm>
 #include "build_graph.h"
 
-BuildGraph::BuildGraph(int w, int h, const cv::Mat& image)
+BuildGraph::BuildGraph(int w, int h)
 {
 	width = w;
 	height = h;
@@ -30,6 +30,9 @@ BuildGraph::BuildGraph(int w, int h, const cv::Mat& image)
 	color_mat = MatrixXd::Zero(h*w, 3);
 	vCosts = new double[width*height];
 	hCosts = new double[width*height];
+	//so far, only RGB
+	num_features = 3;
+	/*
 	cv::Vec3f color;
 	for(int i=0; i<h; ++i)
 	{
@@ -40,6 +43,7 @@ BuildGraph::BuildGraph(int w, int h, const cv::Mat& image)
 		}
 	}
 	color_mat = color_mat / 255.0;
+	*/
 }
 
 BuildGraph::~BuildGraph()
@@ -94,8 +98,9 @@ bool BuildGraph::read_label_weight(std::string filename)
 		{
 			label_weight(0, i) = first_line.at(i);
 		}
+		double test_empty;
 		///////////////////////////
-		//fill the left data
+		//fill the rest data
 		for(int i=1; i<num_pixels; ++i)
 		{
 			std::getline(inFile, line);
@@ -103,6 +108,11 @@ bool BuildGraph::read_label_weight(std::string filename)
 			for(int j=0; j<first_line.size(); ++j)
 			{
 				iss2 >> label_weight(i, j);
+			}
+			if(iss2>>test_empty)
+			{
+				std::cerr<<"extra label weight data error\n";
+				exit(-1);
 			}
 		}
 		inFile.close();
@@ -114,6 +124,62 @@ bool BuildGraph::read_label_weight(std::string filename)
 
 /* 
  * ===  FUNCTION  ======================================================================
+ *         Name:  read_float_color
+ *  Description:  
+ * =====================================================================================
+ */
+bool BuildGraph:: read_float_color(std::string filename)
+{
+	std::ifstream inFile(filename.c_str());
+	std::string line;
+	if(inFile.is_open())
+	{
+		for(int i=0; i<num_pixels; ++i)
+		{
+			std::getline(inFile, line);
+			std::istringstream iss(line);
+			for(int j=0; j<num_features; ++j)
+			{
+				iss >> color_mat(i, j);
+			}
+		}
+		inFile.close();
+		return true;
+	}
+	std::cerr<<"open float color file error\n";
+	return false;
+}		/* -----  end of function read_float_color  ----- */
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  read_label_center
+ *  Description:  read cluster centers
+ * =====================================================================================
+ */
+bool BuildGraph::read_label_center(std::string filename)
+{
+	std::ifstream inFile(filename.c_str());
+	std::string line;
+	if(inFile.is_open())
+	{
+		for(int i=0; i<num_labels; ++i)
+		{
+			std::getline(inFile, line);
+			std::istringstream iss(line);
+			for(int j=0; j<num_features; ++j)
+			{
+				iss >> label_center(i, j);
+			}
+		}
+		inFile.close();
+		return true;
+	}
+	std::cerr<<"open label center file error\n";
+	return false;
+}		/* -----  end of function read_label_center  ----- */
+
+/* 
+ * ===  FUNCTION  ======================================================================
  *         Name:  read_globalPb
  *  Description:  the smooth term
  * =====================================================================================
@@ -122,6 +188,7 @@ bool BuildGraph::read_globalPb(std::string filename)
 {
 	std::ifstream inFile(filename.c_str());
 	std::string line;
+	double threshold = 0.6;
 	if(inFile.is_open())
 	{
 		for(int i=0; i<height; ++i)
@@ -131,6 +198,7 @@ bool BuildGraph::read_globalPb(std::string filename)
 			for(int j=0; j<width; ++j)
 			{
 				iss >> globalPb(i, j);
+				globalPb(i, j) > threshold ? globalPb(i, j) : 0.0;
 			}
 		}
 		inFile.close();
@@ -146,7 +214,7 @@ bool BuildGraph::read_globalPb(std::string filename)
  *  Description:  build graph for solve
  * =====================================================================================
  */
-bool BuildGraph::build_graph(std::string label_file, std::string weight_file, std::string gpb_file)
+bool BuildGraph::build_graph(std::string label_file, std::string weight_file, std::string gpb_file, std::string colorf_file, std::string label_center_file)
 {
 	if(!read_labels(label_file))
 	{
@@ -163,8 +231,20 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 		std::cerr<<"read globalPb file "<<gpb_file<<" failure\n";
 		exit(-1);
 	}
+	if(!read_float_color(colorf_file))
+	{
+		std::cerr<<"read float color file error\n";
+		exit(-1);
+	}
 
 	num_labels = init_labels.maxCoeff() + 1;
+	label_center = MatrixXr::Zero(num_labels, num_features);
+	if(!read_label_center(label_center_file))
+	{
+		std::cerr<<"read label centers file " << label_center_file<<" failure\n";
+		exit(-1);
+	}
+
 	smooth = new double[num_labels * num_labels];
 	try{
 		gc = new GCoptimizationGridGraph(width, height, num_labels);
@@ -175,42 +255,45 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 			{
 				for(int l=0; l<num_labels; ++l)
 				{
-					gc->setDataCost(width*i+j, l, 0.5*label_weight(width*i+j, l));
-					/*  
-					if(l == init_labels(i, j))
-						gc->setDataCost(width*i+j, l, 0.0);
-					else
-						gc->setDataCost(width*i+j, l, 0.5);
-					*/
+					gc->setDataCost(width*i+j, l, label_weight(width*i+j, l));
 				}
 			}
 
 		//////////////////////////////////////////
 		// file smooth term 
-		double sigma2 = 0.2; //squared sigma 
-		double weight = 1.0 ; //    / std::sqrt(sigma2);
+		double color_sigma2 = 1.0;
+		double edge_sigma2 = 0.01; //squared sigma 
+		double label_sigma2 = 0.1;
+		double alpha = 1.0;
+		//use cluster center as label weight
+		//double weight; //    / std::sqrt(sigma2);
 		Vector3d diff;
-		std::cout<<"smooth term weight is "<<weight<<std::endl;
+		//std::cout<<"smooth term weight is "<<weight<<std::endl;
+		//cost according to normal
 		for(int i=0; i<num_labels; ++i)
 			for(int j=0; j<num_labels; ++j)
 			{
-				/*
 				   if(i==j)
-				   smooth[i*num_labels+j] = 0.0;
+				   {
+					   smooth[i*num_labels+j] = 0.0;
+				   }
 				   else
-				   smooth[i*num_labels+j] = 1.0;
-				   */
-				smooth[i*num_labels+j] = (i==j) ? 0.0 : weight;
+				   {
+					   smooth[i*num_labels+j] = 10.0 * ( label_center.row(i) - label_center.row(j) ).norm();
+					   //smooth[i*num_labels+j] = 10.0 * ( label_center.row(i) - label_center.row(j) ).norm();
+				   }
 			}
 
+		//cost according to spatial relation
 		for(int i=0; i<height; ++i)
 			for(int j=0; j<width; ++j)
 			{
 				if(i < height-1)
 				{
 					diff = color_mat.row(i*width + j) - color_mat.row((i+1)*width + j);
-					vCosts[i*width+j] = 0.4 * std::exp(-0.5*std::max(globalPb(i, j), globalPb(i+1, j)) / sigma2) + (0.6) * std::exp(- 0.5*diff.squaredNorm() / sigma2);
+					vCosts[i*width+j] = alpha * std::exp(-0.5*std::max(globalPb(i, j), globalPb(i+1, j)) / edge_sigma2) + (1-alpha) * std::exp(-0.5*diff.squaredNorm() / color_sigma2);
 					//vCosts[i*width+j] = std::exp(-1*std::max(globalPb(i, j), globalPb(i+1, j)) / sigma2 );
+					vCosts[i*width+j] *= 5.0; 
 				}
 				else
 				{
@@ -219,8 +302,9 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 				if(j < width-1)
 				{
 					diff = color_mat.row(i*width + j) - color_mat.row(i*width + (j+1));
-					hCosts[i*width+j] = 0.4 * std::exp(-1*std::max(globalPb(i, j), globalPb(i, j+1)) / sigma2) + (0.6) * std::exp(- 0.5 * diff.squaredNorm() / sigma2);
+					hCosts[i*width+j] = alpha * std::exp(-0.5 *std::max(globalPb(i, j), globalPb(i, j+1)) / edge_sigma2) + (1-alpha) * std::exp(-0.5 * diff.squaredNorm() / color_sigma2);
 					//hCosts[i*width+j] = std::exp(-1*std::max(globalPb(i, j), globalPb(i, j+1)) / sigma2 );
+					hCosts[i*width+j] *= 5.0;
 				}
 				else
 				{
@@ -231,7 +315,7 @@ bool BuildGraph::build_graph(std::string label_file, std::string weight_file, st
 			gc->setSmoothCostVH(smooth, vCosts, hCosts);
 
 		//////////////////// checking /////////////////////////////
-			std::string base_name = label_file.substr(16, label_file.length()-21);
+			std::string base_name = label_file.substr(12, label_file.length()-17);
 			std::string path = "data/cost/";
 			std::string vcost_name = path + base_name + "vcost";
 			std::string hcost_name = path + base_name + "hcost";
@@ -324,3 +408,14 @@ void BuildGraph::save_result(std::string filename)
 	outFile.close();
 }		/* -----  end of function save_result  ----- */
 
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  build_general_graph
+ *  Description:  
+ * =====================================================================================
+ */
+//void BuildGraph::build_general_graph ( <+argument_list+> )
+//{
+//	return <+return_value+>;
+//}		/* -----  end of function build_general_graph  ----- */

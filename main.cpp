@@ -20,7 +20,7 @@
 
 int main(int argc, char** argv)
 {
-	if(argc != 5)
+	if(argc != 7)
 	{
 		std::cerr<<"Not right parameter\n";
 		return -1;
@@ -37,13 +37,16 @@ int main(int argc, char** argv)
 	std::string path = "result/label/";
 	std::string suffix = "label";
 	std::string full_name = argv[1];
-	std::string name = path + full_name.substr(14, full_name.length()-17) + suffix;
+	std::string name = path + full_name.substr(12, full_name.length()-15) + suffix;
+	std::cout <<"Image "<<argv[1]<<std::endl;
 	std::cout<<"width is "<<width<<", height is "<<height<<std::endl;
-	BuildGraph label_graph(width, height, image);
+	BuildGraph label_graph(width, height);
 	//// param1@ init label
 	//   param2@ label(data) weight
 	//   param3@ smooth term weight
-	label_graph.build_graph(argv[2], argv[3], argv[4]);
+	//   param4@ float color value
+	//   param5@ cluster centers
+	label_graph.build_graph(argv[2], argv[3], argv[4], argv[5], argv[6]);
 	label_graph.solve();
 	label_graph.save_result(name);
 
