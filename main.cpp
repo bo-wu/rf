@@ -16,11 +16,12 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip>
+#include <cstdlib>
 #include "build_graph.h"
 
 int main(int argc, char** argv)
 {
-	if(argc != 7)
+	if(argc != 8)
 	{
 		std::cerr<<"Not right parameter\n";
 		return -1;
@@ -41,14 +42,22 @@ int main(int argc, char** argv)
 	std::cout <<"Image "<<argv[1]<<std::endl;
 	std::cout<<"width is "<<width<<", height is "<<height<<std::endl;
 	BuildGraph label_graph(width, height);
+
 	//// param1@ init label
 	//   param2@ label(data) weight
 	//   param3@ smooth term weight
 	//   param4@ float color value
 	//   param5@ cluster centers
-	label_graph.initial_data(argv[2], argv[3], argv[4], argv[5], argv[6]);
+	label_graph.initial_data(argv[2], argv[3], argv[4], argv[5], argv[6], atoi(argv[7]));
+
+/*
 	label_graph.build_grid_graph();
 	label_graph.solve_grid_graph();
+*/	
+	label_graph.build_general_graph();
+	label_graph.solve_general_graph();
+	/* 
+	 */
 	label_graph.save_result(name);
 
 	/////////////  checking  /////////////////
@@ -68,3 +77,4 @@ int main(int argc, char** argv)
 	*/
 	return 0;
 }
+

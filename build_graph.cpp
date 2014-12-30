@@ -48,9 +48,15 @@ BuildGraph::BuildGraph(int w, int h)
 
 BuildGraph::~BuildGraph()
 {
-	delete gc;
-	delete ggc;
-	delete []smooth;
+	if(bGrid)
+	{
+		delete gc;
+		delete []smooth;
+	}
+	else
+	{
+		delete ggc;
+	}
 	delete []vCosts;
 	delete []hCosts;
 }
@@ -214,10 +220,10 @@ bool BuildGraph::read_globalPb(std::string filename)
 /* 
  * ===  FUNCTION  ======================================================================
  *         Name:  initial_data
- *  Description:  
+ *  Description:  prepared data needed
  * =====================================================================================
  */
-void BuildGraph::initial_data(std::string label_file, std::string weight_file, std::string gpb_file, std::string colorf_file, std::string label_center_file)
+void BuildGraph::initial_data(std::string label_file, std::string weight_file, std::string gpb_file, std::string colorf_file, std::string label_center_file, int sa)
 {
 	if(!read_labels(label_file))
 	{
@@ -249,17 +255,18 @@ void BuildGraph::initial_data(std::string label_file, std::string weight_file, s
 	}
 
 	label_file_name = label_file;
-	
+	symm_axis = sa;
 }		/* -----  end of function initial_data  ----- */
 
 /* 
  * ===  FUNCTION  ======================================================================
- *         Name:  build_graph
- *  Description:  build graph for solve
+ *         Name:  build_grid_graph
+ *  Description:  build grid graph for image to solve
  * =====================================================================================
  */
 bool BuildGraph::build_grid_graph()
 {
+	bGrid = true;
 	smooth = new double[num_labels * num_labels];
 	try{
 		gc = new GCoptimizationGridGraph(width, height, num_labels);
@@ -278,9 +285,9 @@ bool BuildGraph::build_grid_graph()
 		// file smooth term 
 		double color_sigma2 = 0.01;
 		double edge_sigma2 = 0.01; //squared sigma 
-		double label_sigma2 = 8.0;
+		double label_sigma2 = 4.0;
 		double alpha = 0.9;
-		//cost according to normal
+		//label cost
 		for(int i=0; i<num_labels; ++i)
 			for(int j=0; j<num_labels; ++j)
 			{
@@ -291,7 +298,7 @@ bool BuildGraph::build_grid_graph()
 				   else
 				   {
 					   //smooth[i*num_labels+j] = 10.0 * ( label_center.row(i) - label_center.row(j) ).norm();
-					   smooth[i*num_labels+j] = std::exp( ( label_center.row(i) - label_center.row(j) ).squaredNorm() / label_sigma2 );
+					   smooth[i*num_labels+j] = std::exp( 0.5 * ( label_center.row(i) - label_center.row(j) ).squaredNorm() / label_sigma2 );
 				   }
 			}
 
@@ -430,8 +437,73 @@ void BuildGraph::save_result(std::string filename)
  */
 bool BuildGraph::build_general_graph()
 {
+	bGrid = false;
 	ggc = new GCoptimizationGeneralGraph(num_pixels, num_labels);
-	set_neighbors(ggc);
+	set_neighbors();
+	////////////////////////////////////////////
+	// fill data term
+	for(int i=0; i<height; ++i)
+		for(int j=0; j<width; ++j)
+		{
+			for(int l=0; l<num_labels; ++l)
+			{
+				ggc->setDataCost(width*i+j, l, label_weight(width*i+j, l));
+			}
+		}
+
+	///////////////////////////////////////////
+	//fill smooth term (only label cost)
+	//spatial varying cost already set in set_neighbors
+	double temp;
+	double label_sigma2 = 4.0;
+	for(int i=0; i<num_labels; ++i)
+		for(int j=0; j<num_labels; ++j)
+		{
+			if(i == j)
+			{
+				temp = 0.0;
+			}
+			else 
+			{
+				temp = std::exp( 0.5*(label_center.row(i) - label_center.row(j)).squaredNorm() / label_sigma2 );
+			}
+			ggc->setSmoothCost(i, j, temp);
+		}
+
+	///////////////////////  checking  /////////////////////////
+	std::string base_name = label_file_name.substr(12, label_file_name.length()-17);
+	std::string path = "data/cost/";
+	std::string vcost_name = path + base_name + "vcost";
+	std::string hcost_name = path + base_name + "hcost";
+	std::string weight_name = path + base_name + "wei";
+	std::ofstream outVcost(vcost_name.c_str());
+	std::ofstream outHcost(hcost_name.c_str());
+	std::ofstream outWeight(weight_name.c_str());
+	for(int i=0; i<height; ++i)
+	{
+		for(int j=0; j<width; ++j)
+		{
+			outVcost << vCosts[i*width + j]<<" ";
+			outHcost << hCosts[i*width + j]<<" ";
+		}
+		outVcost<<"\n";
+		outHcost<<"\n";
+	}
+	for(int i=0; i<num_pixels; ++i)
+	{
+		for(int j=0; j<num_labels; ++j)
+		{
+			outWeight << label_weight(i, j)<<" ";
+		}
+		outWeight<<"\n";
+	}
+	outVcost.close();
+	outHcost.close();
+	outWeight.close();
+	/*  
+	*/
+	/////////////////////////////////////////////////////////////
+
 	return true;
 }		/* -----  end of function build_general_graph  ----- */
 
@@ -442,30 +514,98 @@ bool BuildGraph::build_general_graph()
  *  Description:  
  * =====================================================================================
  */
-void BuildGraph::set_neighbors(GCoptimizationGeneralGraph* ggc)
+void BuildGraph::set_neighbors()
 {
-	// image pixel neighbors
+	Vector3d diff;
+	double data_weight;
+	double data_scale = 1.0;
+	double color_sigma2 = 0.01;
+	double edge_sigma2 = 0.01;
+	double alpha = 0.9;
+	// image pixel neighbors and its weight
+	// essentially smooth term
 	for(int i=0; i<height; ++i)
 		for(int j=0; j<width; ++j)
 		{
 			//for vertical direction
 			if(i < height-1)
 			{
-				ggc->setNeighbors(i*width+j, (i+1)*width+j, 1.0);
+				diff = color_mat.row(i*width+j) - color_mat.row((i+1)*width+j);
+				data_weight = alpha * std::exp(-0.5*std::max(globalPb(i, j), globalPb(i+1, j)) / edge_sigma2) + (1-alpha) * std::exp(-0.5*diff.squaredNorm() / color_sigma2);
+				data_weight *= data_scale;
+				ggc->setNeighbors(i*width+j, (i+1)*width+j, data_weight);
+				vCosts[i*width+j] = data_weight;
+			}
+			else
+			{
+				vCosts[i*width+j] = 0.0;
 			}
 
 			//for horizontal direction
 			if(j < width-1)
 			{
-				ggc->setNeighbors(i*width+j, i*width+(j+1), 1,0);
+				diff = color_mat.row(i*width+j) - color_mat.row(i*width+(j+1));
+				data_weight = alpha * std::exp(-0.5*std::max(globalPb(i, j), globalPb(i, j+1)) / edge_sigma2) + (1-alpha) * std::exp(-0.5*diff.squaredNorm() / color_sigma2);
+				data_weight *= data_scale;
+				ggc->setNeighbors(i*width+j, i*width+(j+1), data_weight);
+				hCosts[i*width+j] = data_weight;
+			}
+			else
+			{
+				hCosts[i*width+j] = 0.0;
 			}
 		}
 
-	// symmetric is only for windows
+	// only vertical symmetric
 	// symmetric neighbors
-	//
-}		/* -----  end of function set_neighbors  ----- */
+//	int symm_axis = 80; //vertical axis for symmetric
+	int counter, index;
+	double scale = 0.05;
+	for(int i=0; i<height; ++i)
+		for(int j=0; j<symm_axis; ++j)
+		{
+			counter = 0;
+			for(int k=0; k<num_features; ++k)
+			{
+				//0,0,0 is background
+				if(color_mat(i*width+j, k) > 1.0e-3)
+					counter++;
+			}
+			if(counter == 3) // not background
+			{
+				index = 2*symm_axis - j;
+				if(index >= width)
+				{
+					std::cerr << "out of image range\n";
+					continue;
+				}
+				//center corresponding
+				//        |   ___________
+				//        |  | 1 | 2 | 1 |                  
+				//  p     |  | 2 | 4 | 2 |
+				//        |  | 1 | 2 | 1 |
+				//        |  -------------
+				ggc->setNeighbors(i*width+j, i*width+index, 4.0*scale);
+				//right, left, top, buttom
+				ggc->setNeighbors(i*width+j, i*width+(index+1), 2.0*scale);
+				//Caution on LEFT side!
+				if(index-1 > symm_axis)
+				{
+					ggc->setNeighbors(i*width+j, i*width+(index-1), 2.0*scale);
+				}
+				ggc->setNeighbors(i*width+j, (i-1)*width+index, 2.0*scale);
+				ggc->setNeighbors(i*width+j, (i+1)*width+index, 2.0*scale);
 
+				//top(right,left), buttom(right, left)
+				ggc->setNeighbors(i*width+j, (i-1)*width+(index+1), 1.0*scale);
+				ggc->setNeighbors(i*width+j, (i-1)*width+(index-1), 1.0*scale);
+				ggc->setNeighbors(i*width+j, (i+1)*width+(index+1), 1.0*scale);
+				ggc->setNeighbors(i*width+j, (i+1)*width+(index-1), 1.0*scale);
+			}
+
+		}
+	
+}		/* -----  end of function set_neighbors  ----- */
 
 
 /* 
@@ -476,5 +616,20 @@ void BuildGraph::set_neighbors(GCoptimizationGeneralGraph* ggc)
  */
 void BuildGraph::solve_general_graph()
 {
+	try{
+		std::cout<<"Before Optimization energy is "<< ggc->compute_energy()<<std::endl;
+		//ggc->expansion(10);
+		ggc->expansion(10);
+		std::cout<<"After Optimization energy is "<< ggc->compute_energy()<<std::endl<<std::endl;
+		for(int i=0; i<height; ++i)
+			for(int j=0; j<width; ++j)
+			{
+				result_labels(i, j) = ggc->whatLabel(width*i + j);
+			}
+	}
+	catch(GCException e)
+	{
+		e.Report();
+	}
 }		/* -----  end of function solve_general_graph  ----- */
 
